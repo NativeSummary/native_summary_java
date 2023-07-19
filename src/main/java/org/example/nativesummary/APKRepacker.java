@@ -366,14 +366,14 @@ public class APKRepacker {
                 module = (Module) objectInputStream.readObject();
                 objectInputStream.close();
             } catch (IOException | ClassNotFoundException e) {
-                logger.error("Load sematic summary failed.", e);
+                logger.error("Load semantic summary failed.", e);
                 logger.error("path: {}", mod.getPath());
                 continue;
             }
             summaries.add(module);
         }
         if (summaries.size() == 0) {
-            logger.error("Load sematic summary failed.");
+            logger.error("Load semantic summary failed.");
             return;
         }
 
@@ -490,17 +490,17 @@ public class APKRepacker {
             return;
         }
         logger.info("apk: " + additionalArgs.get(0));
-        logger.info("sematicSummary: " + additionalArgs.get(1));
+        logger.info("semanticSummary: " + additionalArgs.get(1));
         logger.info("output to: " + outFolder.toString());
         logger.info("platformDir: " + additionalArgs.get(2));
         File fold = new File(additionalArgs.get(0));
-        File sumFold = new File(additionalArgs.get(2));
+        File sumFold = new File(additionalArgs.get(1));
         if (!fold.exists()) {
             logger.error("apkDir not exist or is not directory");
             return;
         }
         if (!sumFold.exists() || !sumFold.isDirectory()) {
-            logger.error("sematicSummary not exist or is not directory");
+            logger.error("semanticSummary not exist or is not directory");
             return;
         }
         // 判断分析模式并处理
@@ -540,7 +540,7 @@ public class APKRepacker {
         if (e != null) {
             System.out.println(e.getMessage());
         }
-        new HelpFormatter().printHelp(" [OPTIONS] <apk> <sematicSummary> <platformDir>", options);
+        new HelpFormatter().printHelp(" [OPTIONS] <apk> <semanticSummary> <platformDir>", options);
     }
 
     public static class SootFailedException extends RuntimeException {

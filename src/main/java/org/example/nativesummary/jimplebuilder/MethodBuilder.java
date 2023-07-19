@@ -69,7 +69,7 @@ public class MethodBuilder {
                     return m;
                 }
             }
-            throw new RuntimeException("Cannot find method, using wrong sematic summary json file?");
+            throw new RuntimeException("Cannot find method, using wrong semantic summary json file?");
         }
         return mth;
     }
@@ -116,7 +116,7 @@ public class MethodBuilder {
             }
         }
         if (current == null && func.registeredBy == null) {
-            throw new RuntimeException("Cannot find method, using wrong sematic summary json file?");
+            throw new RuntimeException("Cannot find method, using wrong semantic summary json file?");
         }
         return current;
     }

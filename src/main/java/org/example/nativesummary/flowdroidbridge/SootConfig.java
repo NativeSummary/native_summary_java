@@ -35,8 +35,8 @@ public class SootConfig extends SootConfigForAndroid {
         // super.setSootOptions(options, config);
         // TODO fix
         // String apk_path = Options.v().process_dir().get(0);
-        // String sematicSummaryPath = apk_path.replaceFirst("\\.apk", "_ss.json");
-		// new PreLoadAnalysis(sematicSummaryPath).do_analysis();
+        // String semanticSummaryPath = apk_path.replaceFirst("\\.apk", "_ss.json");
+		// new PreLoadAnalysis(semanticSummaryPath).do_analysis();
         // BodyBuilder.loadRequiredClasses();
     }
 

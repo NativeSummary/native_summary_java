@@ -127,7 +127,7 @@ public class TypeAnalysis {
             }
         }
         if (current == null && func.registeredBy == null) {
-            throw new RuntimeException("Cannot find method, using wrong sematic summary json file?");
+            throw new RuntimeException("Cannot find method, using wrong semantic summary json file?");
         }
     }
 
