@@ -28,6 +28,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import javax.annotation.Nonnull;
+import javax.management.RuntimeErrorException;
 
 import org.jf.dexlib2.Opcodes;
 import org.jf.dexlib2.dexbacked.DexBackedDexFile;
@@ -255,8 +256,8 @@ public class SecondRepacker {
     // 输入一个Dex文件
     public static SecondRepacker fromRepackedMthList(File[] files, Map<String, Set<String>> mthSigs, Set<String> additionalClasses, Opcodes opcodes) throws IOException {
         if (files.length > 1) {
-            logger.error("Too many (Dex?) files!");
-            return null;
+            // logger.error("Multiple (Dex?) files containing generated body is not supported");
+            throw new RuntimeException("Multiple (Dex?) files containing generated body is not supported");
         }
         SecondRepacker thiz = new SecondRepacker(mthSigs, additionalClasses, opcodes);
 

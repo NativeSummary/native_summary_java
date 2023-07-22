@@ -194,10 +194,12 @@ public class BodyBuilder {
             if (local == null) {
                 lty = ta.getValueType(i);
                 if (lty == null) {
-                    logger.error("VisitPhi: cannot find type: "+i);
+                    // logger.error("VisitPhi: cannot find type: "+i);
                     // lty = NullType.v();
-                    valueMap.put(i, NullConstant.v());
-                    return;
+                    // valueMap.put(i, NullConstant.v());
+                    // return;
+                    logger.warn("VisitPhi: cannot find type, and use Stirng: "+i);
+                    lty = RefType.v("java.lang.String");
                 }
                 local = Jimple.v().newLocal("$"+i.name+"_phi", lty);
                 newBody.getLocals().add(local);
@@ -255,27 +257,64 @@ public class BodyBuilder {
         }
     }
 
+    
+    // RefLikeType分Array类型和RefType。
     private Value handleCast(Value sootVal, Type ty) {
+        // Primitive类型直接算了。如果是null类型就返回对应原语类型的0。其他的不转了。
+        if (ty instanceof PrimType) {
+            if (sootVal instanceof NullConstant) {
+                return getDefaultValue(ty);
+            }
+            // TODO convert between primitive types
+            return sootVal;
+        }
         if (sootVal instanceof NullConstant) {
             return sootVal;
         }
-        if (ty instanceof RefLikeType && sootVal.getType() instanceof PrimType) {
+        if (sootVal.getType() instanceof PrimType) {
             Local boxed = doBoxing(sootVal, (PrimType)sootVal.getType());
             if (boxed != null) {
                 Type boxedTy_ = boxed.getType();
                 assert boxedTy_ instanceof RefType;
                 if (boxedTy_ instanceof RefType) {
-                    RefType boxedTy = (RefType)boxedTy_;
-                    SootMethod tostr = boxedTy.getSootClass().getMethodUnsafe("toString", Collections.<Type>emptyList(), RefType.v("java.lang.String"));
-                    if (tostr != null) {
-                        Local ret = buildCallAssign(tostr, boxed, "$casted");
-                        return ret;
+                    // boxed type to string?
+                    if (TypeAnalysis.isStringType(ty)) {
+                        RefType boxedTy = (RefType)boxedTy_;
+                        SootMethod tostr = boxedTy.getSootClass().getMethodUnsafe("toString", Collections.<Type>emptyList(), RefType.v("java.lang.String"));
+                        if (tostr != null) {
+                            Local ret = buildCallAssign(tostr, boxed, "$tostr");
+                            return ret;
+                        }
                     }
-                } else {logger.error("not RefType after boxing!!");}
+                } else {logger.error("ERROR: not RefType after boxing!!");}
                 return boxed;
             }
-            
         }
+        if (sootVal.getType() instanceof ArrayType) {
+            Local val;
+            if (sootVal instanceof Local) {
+                val = (Local) sootVal;
+            } else {
+                val = Jimple.v().newLocal("$arr", sootVal.getType());
+                newBody.getLocals().add(val);
+                newBody.getUnits().add(Jimple.v().newAssignStmt(val, sootVal));
+            }
+            SootMethod tostr = Scene.v().getSootClass("java.lang.Object").getMethodUnsafe("toString", Collections.<Type>emptyList(), RefType.v("java.lang.String"));
+            if (tostr != null) {
+                Local ret = buildCallAssign(tostr, val, "$tostr");
+                return ret;
+            } else {logger.error("Cannot get Object.toString SootMethod !!");}
+        }
+        // must be RefLikeType
+        // if (ty instanceof RefLikeType) {
+            
+        //     if (ty instanceof  && sootVal.getType() instanceof ArrayType) {
+
+        //     }
+        // } else {
+        //     logger.error("unknown type: " + ty.toQuotedString());
+        //     return sootVal;
+        // }
         // return Jimple.v().newCastExpr(sootVal, ty);
         return sootVal;
     }
@@ -284,7 +323,7 @@ public class BodyBuilder {
         RefType boxedTy = ty.boxedType();
         SootMethod conv = boxedTy.getSootClass().getMethodUnsafe("valueOf", List.<Type>of(ty), boxedTy);
         if (conv == null) {
-            logger.error("Boxing failed for "+ty.toString());
+            logger.error("ERROR: Boxing failed for "+ty.toString());
             return null;
         }
         return buildCallAssign(conv, null, "boxed", sootVal2);
@@ -403,7 +442,7 @@ public class BodyBuilder {
             // if (api.startsWith("GetStatic")) { isStatic = true; }
             SootField fld = ta.getFieldMap(inst.operands.get(2).value);
             if (fld == null) {
-                logger.error(api+" cannot find field!!");
+                logger.error("Cannot find field for: "+ inst);
                 return;
             }
             if (isStatic) {
@@ -427,7 +466,7 @@ public class BodyBuilder {
             // static - JNIEnv *env, jclass clazz, jfieldID fieldID, jobject value
             SootField fld = ta.getFieldMap(inst.operands.get(2).value);
             if (fld == null) {
-                logger.error(api+" cannot find field!!");
+                logger.error("Cannot find field for: "+ inst);
                 return;
             }
             Value val = visitValue(inst.operands.get(3).value, fld.getType());
@@ -467,7 +506,7 @@ public class BodyBuilder {
 
             SootMethod target = ta.getMethodMap(inst.operands.get(2).value);
             if (target == null) {
-                logger.error(api+" cannot find method!!");
+                logger.error("Cannot find field for: "+ inst);
                 return;
             }
             int argCount = target.getParameterCount();
@@ -519,12 +558,12 @@ public class BodyBuilder {
         if (api.equals("NewObject")) {
             SootMethod target = ta.getMethodMap(inst.operands.get(2).value);
             if (target == null) {
-                logger.error(api+" cannot find method!!");
+                logger.error("Cannot find field for: "+ inst);
                 return;
             }
             int arg_size = target.getParameterCount();
             if (arg_size != inst.operands.size() - 3){
-                logger.error(api+" (0x"+Long.toHexString(inst.callsite)+")"+": resolved arg count mismatch");
+                logger.error(api+" (0x"+Long.toHexString(inst.callsite)+")"+": resolved arg count mismatch: "+inst);
             }
             List<Value> args = new ArrayList<>();
             for (int i=0;i<arg_size;i++) {
@@ -558,7 +597,7 @@ public class BodyBuilder {
         if (api.equals("GetStringUTFChars")) {
             Value val = visitValue(inst.operands.get(1).value, RefType.v("java.lang.String"));
             if (val instanceof NullConstant) {
-                logger.error("GetStringUTFChars argument is unknown");
+                logger.warn("Argument is unknown: "+ inst);
             }
             valueMap.put(inst, val);
             ta.typeValue(inst, val.getType());
@@ -567,13 +606,13 @@ public class BodyBuilder {
         if (api.equals("NewStringUTF")) {
             Value val = visitValue(inst.operands.get(1).value, RefType.v("java.lang.String"));
             if (val instanceof NullConstant) {
-                logger.warn("NewStringUTF argument is unknown");
+                logger.warn("Argument is unknown: "+ inst);
             }
             valueMap.put(inst, val);
             ta.typeValue(inst, val.getType());
             return;
         }
-        if (api.startsWith("Get") && api.endsWith("ArrayElement")) {
+        if (api.equals("GetObjectArrayElement")) {
             // Call GetObjectArrayElement null, %a2, long 1
             Value base = visitValue(inst.operands.get(1).value);
             Value ind = visitValue(inst.operands.get(2).value, IntType.v());
@@ -588,6 +627,10 @@ public class BodyBuilder {
             if (base instanceof NullConstant) {
                 result = base;
                 valueMap.put(inst, result);
+            } else if (base instanceof PrimType) {// base is primitive type(convert from jobject to jint handle), degrade to assign
+                result = base;
+                valueMap.put(inst, result);
+                logger.warn("Possible behaviour that pass jobject to java side as handle: "+inst);
             } else {
                 // ind is unknown, use 0.
                 if (ind instanceof NullConstant) {
@@ -625,7 +668,7 @@ public class BodyBuilder {
                 valueMap.put(inst, val);
                 ta.typeValue(inst, val.getType()); // 就是 BooleanType.v()
             } else {
-                logger.warn("failed to resolve IsInstanceOf.");
+                logger.warn("failed to resolve IsInstanceOf: "+inst);
             }
             return;
         }
@@ -686,7 +729,7 @@ public class BodyBuilder {
             ta.typeValue(inst, ret.getType());
             return;
         }
-        logger.error("unimplemented api: "+api);
+        logger.error("unimplemented api: "+inst);
     }
 
     Value ensureNonNull(Value base, RefType type) {
@@ -812,7 +855,7 @@ public class BodyBuilder {
 
     public void build() {
         if (((mth.getModifiers() & soot.Modifier.NATIVE) == 0) && (mth.hasActiveBody())) {
-            logger.error("method already built?");
+            logger.error("method already built?: "+mth.getSignature());
             return;
         }
         newBody = Jimple.v().newBody();

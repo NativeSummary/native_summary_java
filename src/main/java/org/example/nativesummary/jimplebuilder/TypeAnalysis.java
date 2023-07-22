@@ -8,9 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.example.nativesummary.Util;
 import org.example.nativesummary.ir.Function;
 import org.example.nativesummary.ir.Instruction;
@@ -26,6 +23,9 @@ import org.example.nativesummary.ir.value.Number;
 import org.example.nativesummary.ir.value.Param;
 import org.example.nativesummary.ir.value.Str;
 import org.example.nativesummary.ir.value.Top;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import soot.AbstractJasminClass;
 import soot.ArrayType;
 import soot.DoubleType;
@@ -188,7 +188,7 @@ public class TypeAnalysis {
                 // Nonvirtual: jobject obj, jclass clazz, jmethodID methodID, ... 
                 if (call.target.matches("Call.*Method.?")) {
                     if (!Util.jniApiNameSet.contains(call.target)) {
-                        logger.error("Cannot recognize JNI call: "+call.target);
+                        logger.error("Cannot recognize JNI call: " + call);
                         continue;
                     }
                     int midInd = 2;
@@ -197,7 +197,7 @@ public class TypeAnalysis {
                     }
                     SootMethod m = getMethodMap(call.operands.get(midInd).value);
                     if (m == null) {
-                        logger.error("TypeAnalysis: Cannot resolve target for "+call.toString());
+                        logger.error("TypeAnalysis: Cannot resolve target for: "+call);
                         continue;
                     }
                     // if no type for each argument, type it.
@@ -295,6 +295,14 @@ public class TypeAnalysis {
             ret = ty2;
         } else if (ty2 instanceof PrimType && ty1 instanceof RefLikeType) {
             ret = ty1;
+        } else if (ty1 instanceof ArrayType) { // 同时有ArrayType和其他Type，直接StringType。ArrayType直接toString。
+            ret = RefType.v("java.lang.String");
+        } else if (ty2 instanceof ArrayType) {
+            ret = RefType.v("java.lang.String");
+        } else if (isStringType(ty1)) { // prefer string type.
+            ret = ty1;
+        } else if (isStringType(ty2)) {
+            ret = ty2;
         } else if (ty1 instanceof LongType) { // Workaround: 二进制那边都直接用的long，所以出现了int的话应该用int。
             ret = ty2;
         } else if(ty2 instanceof LongType) {
@@ -303,6 +311,13 @@ public class TypeAnalysis {
             logger.error("Failed to merge two type: {} vs. {}", ty1, ty2);
         }
         return ret;
+    }
+
+    public static boolean isStringType(Type ty2) {
+        if (ty2 instanceof RefType) {
+            return ((RefType) ty2).getClassName().equals("java.lang.String");
+        }
+        return false;
     }
 
     // merge type and put into typemap
@@ -410,11 +425,11 @@ public class TypeAnalysis {
             if (call.target.matches("NewGlobalRef")) {
                 Value cid = call.operands.get(1).value;
                 if (classMap.containsKey(cid)) {
-                    logger.debug("passing classid for"+call.toString());
+                    logger.debug("Passing classid for"+call.toString());
                     classMap.put(call, getClassMap(cid));
                 }
                 if (sootTyMap.containsKey(cid)) {
-                    logger.debug("passing sootType for"+call.toString());
+                    logger.debug("Passing sootType for"+call.toString());
                     sootTyMap.put(call, getValueType(cid));
                 }
             }
@@ -508,6 +523,10 @@ public class TypeAnalysis {
                 dynRegMap.put(call, cclz);
             }
         }
+        // expand method id to phi inst
+        expandPhi(methodMap);
+        // expand field id to phi inst
+        expandPhi(fieldMap);
     }
 
     void handleClassId() {
@@ -523,7 +542,8 @@ public class TypeAnalysis {
                 SootClass clz = Scene.v().getSootClassUnsafe(clz_name, false);
                 if (clz == null || (clz.isPhantomClass() && clz.getMethodCount() == 0)) {
                     logger.error("cannot load class for: {}", call);
-                    logger.error("Please add "+clz_name+" to preloaded classes.");
+                    logger.error("Please add "+clz_name+" to preloaded classes?");
+                    logger.error("Or the class cannot be found in dex files. Probably apk packer is used to hide dex file?");
                     // Scene.v().loadClass(clz_name, SootClass.SIGNATURES);
                     // throw new RuntimeException("Cannot load class.");
                     return;
@@ -583,6 +603,38 @@ public class TypeAnalysis {
                 }
             }
         });
+        // expand class id to phi inst
+        expandPhi(classMap);
+    }
+
+    public static <T> void expandPhi(Map<Value, T> idMap) {
+        // expand class, method or field id to phi inst
+        Map<Value,T> toAdd = new HashMap<>();
+        long newCount = 0;
+        do {
+            toAdd.clear();
+            newCount = 0;
+            for (Map.Entry<Value,T> i: idMap.entrySet()) {
+                for (Use v: i.getKey().getUses()) {
+                    assert v.value == i.getKey();
+                    if (v.user instanceof Phi) {
+                        if ((!idMap.containsKey(v.user)) && (!toAdd.containsKey(v.user))) {
+                            toAdd.put(v.user, i.getValue());
+                            newCount += 1;
+                        } else {
+                            T c1 = idMap.get(v.user);
+                            if (c1 == null) {
+                                c1 = toAdd.get(v.user);
+                            }
+                            if (!c1.equals(i.getValue())) {
+                                logger.warn("Type mismatch for phi inst: "+c1.toString() + ", " + i.getValue().toString());
+                            }
+                        }
+                    }
+                }
+            }
+            idMap.putAll(toAdd);
+        } while(newCount > 0);
     }
 
     Str ensureStr(Value strv) {
@@ -601,7 +653,7 @@ public class TypeAnalysis {
                 }
                 return ret;
             } else {
-                logger.error("string constant expected: {}", strv);
+                logger.error("String constant expected: {}", strv);
             }
             return null;
         }
@@ -674,15 +726,15 @@ public class TypeAnalysis {
 
     public void iterCall(CallHandler handler) {
         for (Instruction inst: func.insts()) {
-            if (inst instanceof Phi) {
-                // TODO handle Phi for classes
-                for (Use use: inst.operands) {
-                    Value val = use.value;
-                    if (classMap.containsKey(val)) {
-                        logger.error("TODO handle Phi for jclass.");
-                    }
-                }
-            }
+            // if (inst instanceof Phi) {
+            //     // TODO handle Phi for classes
+            //     for (Use use: inst.operands) {
+            //         Value val = use.value;
+            //         if (classMap.containsKey(val)) {
+            //             logger.error("TODO handle Phi for jclass.");
+            //         }
+            //     }
+            // }
             if (!(inst instanceof Call)) {
                 continue;
             }
