@@ -32,6 +32,7 @@ import soot.DoubleType;
 import soot.FloatType;
 import soot.IntType;
 import soot.LongType;
+import soot.NullType;
 import soot.PrimType;
 import soot.RefLikeType;
 import soot.RefType;
@@ -303,6 +304,10 @@ public class TypeAnalysis {
             ret = ty1;
         } else if (isStringType(ty2)) {
             ret = ty2;
+        } else if (ty1 instanceof NullType) { // null类型则用另外一个。
+            ret = ty2;
+        } else if(ty2 instanceof NullType) {
+            ret = ty1;
         } else if (ty1 instanceof LongType) { // Workaround: 二进制那边都直接用的long，所以出现了int的话应该用int。
             ret = ty2;
         } else if(ty2 instanceof LongType) {

@@ -55,12 +55,21 @@
         },
         {
             "type": "java",
-            "name": "debug",
+            "name": "debug fdroid",
             "request": "launch",
             "mainClass": "org.example.nativesummary.APKRepacker",
             "cwd": "/home/user/ns/dev/NativeSummary/native_summary_java/",
             "vmArgs": "-ea",
-            "args": "/home/user/ns/dataset/nfbe/native_array_elements-release-unsigned.apk /home/user/ns/experiment/baseline-native_summary/nfbe-results/native_array_elements-release-unsigned.apk /home/user/ns/dev/NativeSummary/platforms --no-null-in-phi --debug-type --debug-jimple"
+            "args": "/home/user/ns/dataset/fdroid-filter/me.tagavari.airmessage_139.apk /home/user/ns/experiment/baseline-native_summary/fdroid-results/me.tagavari.airmessage_139.apk /home/user/ns/dev/NativeSummary/platforms --no-null-in-phi --debug-type --debug-jimple"
+        },
+        {
+            "type": "java",
+            "name": "debug malr",
+            "request": "launch",
+            "mainClass": "org.example.nativesummary.APKRepacker",
+            "cwd": "/home/user/ns/dev/NativeSummary/native_summary_java/",
+            "vmArgs": "-ea",
+            "args": "/home/user/ns/dataset/malradar-filter/5c382b218b2bcc5adbc0c09d07e8bd5f4038e2912273f8e6b8bc3f19184315cd.apk /home1/user/ns/experiment/baseline-native_summary/malradar-results/5c382b218b2bcc5adbc0c09d07e8bd5f4038e2912273f8e6b8bc3f19184315cd.apk /home/user/ns/dev/NativeSummary/platforms --no-null-in-phi --debug-type --debug-jimple"
         }
     ]
 }

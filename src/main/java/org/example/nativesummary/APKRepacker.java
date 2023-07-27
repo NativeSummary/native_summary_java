@@ -397,6 +397,11 @@ public class APKRepacker {
         }
         SigCollector repackedNative = ctx.doAnalysis(summaries, apkPath, platformDir);
 
+        if (repackedNative.getClasses().size() == 0) {
+            logger.info("Canoot build body for any native method, No apk is generated.");
+            return;
+        }
+
         Path sootDexFolder;
         try {
             sootDexFolder = r.outputSootAPK(repackedNative.getClasses(), true);

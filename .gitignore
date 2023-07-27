@@ -2,3 +2,4 @@ target/
 iccProvider/
 apk-test/
 dependency-reduced-pom.xml
+nativesummary_repacked_apks/

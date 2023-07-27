@@ -148,6 +148,10 @@ public class MethodBuilder {
                 logger.error("cannot find sootmethod: "+m.clazz+"."+m.name);
                 continue;
             }
+            if (sootMth.getDeclaringClass().isPhantomClass()) {
+                logger.error("Cannot find class (PhantomClass), probably the apk is packed?");
+                continue;
+            }
 
             repackedNative.addMethod(sootMth);
             buildBody(sootMth, m);

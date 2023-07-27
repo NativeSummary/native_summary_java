@@ -252,6 +252,9 @@ public class BodyBuilder {
                     Value casted = handleCast(val, mth.getReturnType());
                     val = casted;
                 }
+                if (!(val.getType() instanceof Local)) {
+                    val = makeLocal(val, mth.getReturnType(), "ret");
+                }
                 newBody.getUnits().add(Jimple.v().newReturnStmt(val));
             }
         }
@@ -510,18 +513,24 @@ public class BodyBuilder {
                 return;
             }
             int argCount = target.getParameterCount();
-            if (argCount > inst.operands.size() - 3){
+            int actualArgCount = inst.operands.size() - 3;
+            if (argCount > actualArgCount){
                 logger.error(api+" (0x"+Long.toHexString(inst.callsite)+")"+": resolved arg count not enough");
-                argCount = inst.operands.size() - 3;
             }
+            
             List<Value> args = new ArrayList<>();
             for (int i=0;i<argCount;i++) {
                 Type at = target.getParameterType(i);
-                Value l = visitValue(inst.operands.get(i+3).value, at);
-                // TODO 转成Local？
-                if (!l.getType().equals(at)) {
-                    Value casted = handleCast(l, at);
-                    l = casted;
+                Value l;
+                if (i >= actualArgCount) {
+                    l = getDefaultValue(at);
+                } else {
+                    l = visitValue(inst.operands.get(i+3).value, at);
+                    // TODO 转成Local？
+                    if (!l.getType().equals(at)) {
+                        Value casted = handleCast(l, at);
+                        l = casted;
+                    }
                 }
                 args.add(l);
             }
@@ -616,26 +625,43 @@ public class BodyBuilder {
             // Call GetObjectArrayElement null, %a2, long 1
             Value base = visitValue(inst.operands.get(1).value);
             Value ind = visitValue(inst.operands.get(2).value, IntType.v());
+            // // ind is unknown, use 0.
+            // if (ind instanceof NullConstant) {
+            //     ind = IntConstant.v(0);
+            // }
             if (ind instanceof NullConstant) {
                 // make opaque int
+                ind = getCounter();
             }
             if (ind instanceof LongConstant) {
-                ind = IntConstant.v(Math.toIntExact(((LongConstant)ind).value));
+                try {
+                    ind = IntConstant.v(Math.toIntExact(((LongConstant)ind).value));
+                } catch (ArithmeticException e) {
+                    logger.error("GetObjectArrayElement: array index overflow.");
+                    ind = IntConstant.v(0);
+                }
+            }
+            if (!(base.getType() instanceof ArrayType)) {
+                logger.warn("GetObjectArrayElement: base type is: "+base.getType());
             }
             Value result;
             // base is unknown, degrade to assign
             if (base instanceof NullConstant) {
                 result = base;
                 valueMap.put(inst, result);
-            } else if (base instanceof PrimType) {// base is primitive type(convert from jobject to jint handle), degrade to assign
+            } else if (base.getType() instanceof PrimType) {// base is primitive type(convert from jobject to jint handle), degrade to assign
                 result = base;
                 valueMap.put(inst, result);
                 logger.warn("Possible behaviour that pass jobject to java side as handle: "+inst);
+            } else if (base.getType() instanceof RefType) {
+                Type objarr = ArrayType.v(RefType.v("java.lang.Object"), 1);
+                Value casted = makeLocal(Jimple.v().newCastExpr(base, objarr), "castedArr");
+                // Jimple.v().newLocal("castedArr", objarr);
+                // newBody.getLocals().add(casted);
+                // newBody.getUnits().add(Jimple.v().newAssignStmt(casted, ));
+                result = Jimple.v().newArrayRef(casted, ind);
+                result = makeLocal(result, inst.name);
             } else {
-                // ind is unknown, use 0.
-                if (ind instanceof NullConstant) {
-                    ind = IntConstant.v(0);
-                }
                 result = Jimple.v().newArrayRef(base, ind);
                 result = makeLocal(result, inst.name);
             }
@@ -675,7 +701,11 @@ public class BodyBuilder {
         if (api.equals("Throw")) {
             Value val = visitValue(inst.operands.get(1).value);
             if (val != null) {
-                newBody.getUnits().add(Jimple.v().newThrowStmt(val));
+                if (val.getType() instanceof RefType) {
+                    newBody.getUnits().add(Jimple.v().newThrowStmt(val));
+                } else {
+                    logger.warn("Throw not returning RefType: "+inst);
+                }
             }
             return;
         }
@@ -693,6 +723,8 @@ public class BodyBuilder {
                     newBody.getUnits().add(Jimple.v().newAssignStmt(ret, Jimple.v().newNewExpr(target_type)));
                     buildSpecialCall(cons, (Local)ret, str); // omit?
                     newBody.getUnits().add(Jimple.v().newThrowStmt(ret));
+                } else {
+                    logger.warn("ThrowNew failed for: "+inst);
                 }
             }
             return;
@@ -742,10 +774,14 @@ public class BodyBuilder {
         return base;
     }
     Value makeLocal(Value ret, String name) {
-        if (ret.getType() instanceof NullType) {
+        return makeLocal(ret, ret.getType(), name);
+    }
+
+    Value makeLocal(Value ret, Type ty, String name) {
+        if (ty instanceof NullType) {
             return null;
         }
-        Local l = Jimple.v().newLocal("$"+name, ret.getType());
+        Local l = Jimple.v().newLocal("$"+name, ty);
         newBody.getLocals().add(l);
         newBody.getUnits().add(Jimple.v().newAssignStmt(l, ret));
         return l;
@@ -862,7 +898,15 @@ public class BodyBuilder {
         //turn off native modifier
         mth.setModifiers(mth.getModifiers() ^ soot.Modifier.NATIVE);
         newBody.setMethod(mth);
-        mth.setActiveBody(newBody);
+        try {
+            mth.setActiveBody(newBody);
+        } catch (RuntimeException e) {
+            if (e.getMessage().contains("cannot set active body for phantom class")) {
+                logger.error("Cannot find class, probably the apk is packed?");
+                throw e;
+            }
+        }
+        
         
         // 获取参数到局部变量，局部变量放进参数list里备用。
         buildArgs();
