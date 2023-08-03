@@ -63,9 +63,11 @@ import soot.jimple.Jimple;
 import soot.jimple.LongConstant;
 import soot.jimple.NeExpr;
 import soot.jimple.NullConstant;
+import soot.jimple.NumericConstant;
 import soot.jimple.StaticInvokeExpr;
 import soot.jimple.Stmt;
 import soot.jimple.StringConstant;
+import soot.toDex.SootToDexUtils;
 
 /*
 typedef enum android_LogPriority {
@@ -216,8 +218,8 @@ public class BodyBuilder {
             IfStmt prevIfStmt = null;
             for (Value sootVal: vals) {
                 NeExpr cond = Jimple.v().newNeExpr(getCounter(), getCount());
-				IfStmt ifStmt = Jimple.v().newIfStmt(cond, (Stmt)null);
-				newBody.getUnits().add(ifStmt);
+                IfStmt ifStmt = Jimple.v().newIfStmt(cond, (Stmt)null);
+                newBody.getUnits().add(ifStmt);
                 // fixup prev target
                 if (prevIfStmt != null) {
                     prevIfStmt.setTarget(ifStmt);
@@ -268,7 +270,34 @@ public class BodyBuilder {
             if (sootVal instanceof NullConstant) {
                 return getDefaultValue(ty);
             }
+            if (sootVal.getType() instanceof RefLikeType) {
+                logger.error("Failed to cast from RefLikeType to PrimType: "+sootVal);
+                return getDefaultValue(ty);
+            }
+            // cast between wide value Primitive and non-wide values.
+            if (SootToDexUtils.isWide(sootVal.getType()) != SootToDexUtils.isWide(ty)){
+                if (sootVal.getType() instanceof PrimType) {
+                    return makeLocal(Jimple.v().newCastExpr(sootVal, ty), "castWide");
+                } else {
+                    logger.error("Failed to handle cast between wide and non-wide values.");
+                }
+            } else if (sootVal.getType() instanceof PrimType) {
+                return makeLocal(Jimple.v().newCastExpr(sootVal, ty), "castPrim");
+            }
             // TODO convert between primitive types
+            // if (sootVal.getType() instanceof LongType || sootVal.getType() instanceof DoubleType)
+            // if wide type, and not wide, do something.
+            // cast between constants
+            // if (sootVal instanceof NumericConstant && ty instanceof PrimType) {
+            //     return convertConstant((NumericConstant)sootVal, (PrimType)ty);
+            // }
+            // if (SootToDexUtils.isWide(sootVal.getType()) && (!SootToDexUtils.isWide(ty))){
+            //     logger.error("handleCast: unable to cast between non-wide type and wide type.");
+            //     throw new RuntimeException("handleCast: unable to cast between non-wide type and wide type");
+            // }
+
+            // due to type analysis, it's unlikely to cast from object to primitive
+            logger.error("handleCast: cast from non PrimType to PrimType??");
             return sootVal;
         }
         if (sootVal instanceof NullConstant) {
@@ -322,6 +351,44 @@ public class BodyBuilder {
         return sootVal;
     }
 
+    private Value convertConstant(NumericConstant constant, PrimType ty) {
+        Double val = null;
+        // convert to double
+        if (constant instanceof IntConstant) {
+            IntConstant ic = (IntConstant) constant;
+            val = Double.valueOf(ic.value);
+        } else if (constant instanceof LongConstant) {
+            LongConstant ic = (LongConstant) constant;
+            val = Double.valueOf(ic.value);
+        } else if (constant instanceof DoubleConstant) {
+            DoubleConstant ic = (DoubleConstant) constant;
+            val = ic.value;
+        } else if (constant instanceof FloatConstant) {
+            FloatConstant ic = (FloatConstant) constant;
+            val = Double.valueOf(ic.value);
+        }
+        if (val == null) {
+            logger.error("convertConstant: Failed to find constant type");
+            val = 0.0;
+        }
+        // convert back to required type
+        Value ret;
+        // t.equals(ShortType.v()) || t.equals(ByteType.v()) || t.equals(BooleanType.v()) || t.equals(CharType.v()
+        if (Type.toMachineType(ty) instanceof IntType) {
+            ret = IntConstant.v((int)Math.round(val));
+        } else if (ty instanceof DoubleType) {
+            ret = DoubleConstant.v(val);
+        } else if (ty instanceof FloatType) {
+            ret = FloatConstant.v(val.floatValue());
+        } else if (ty instanceof LongType) {
+            ret = LongConstant.v(Math.round(val));
+        } else {
+            logger.error("convertConstant: Failed to create primitive type");
+            ret = IntConstant.v((int)Math.round(val));
+        }
+        return ret;
+        // throw new RuntimeException("BodyBuilder.convertConstant failed.");
+    }
     private Local doBoxing(Value sootVal2, PrimType ty) {
         RefType boxedTy = ty.boxedType();
         SootMethod conv = boxedTy.getSootClass().getMethodUnsafe("valueOf", List.<Type>of(ty), boxedTy);
@@ -537,10 +604,16 @@ public class BodyBuilder {
             SootClass target_clz = target.getDeclaringClass();
             RefType target_type = RefType.v(target_clz);
             if (isStatic) {
+                // jobject (JNICALL *CallStaticObjectMethod)
+                //     (JNIEnv *env, jclass clazz, jmethodID methodID, ...);
                 assert target.isStatic();
                 ret = buildCallAssign(target, null, "$"+inst.name, args.toArray(new Value[0]));
             } else {
                 Value base = visitValue(inst.operands.get(1).value, target_type);
+                if (base instanceof PrimType) {
+                    logger.error("CallMethod: base is primitive type: possible behaviour that pass jobject to java side as handle! ");
+                    base = NullConstant.v();
+                }
                 if (!(base instanceof Local)) {
                     Local l = Jimple.v().newLocal("$"+inst.name+"_base", target_type);
                     newBody.getLocals().add(l);
@@ -702,7 +775,16 @@ public class BodyBuilder {
             Value val = visitValue(inst.operands.get(1).value);
             if (val != null) {
                 if (val.getType() instanceof RefType) {
+                    // create if branch so that later code is not dead code
+                    Stmt lastNop = Jimple.v().newNopStmt();
+                    NeExpr cond = Jimple.v().newNeExpr(getCounter(), getCount());
+                    IfStmt ifStmt = Jimple.v().newIfStmt(cond, lastNop);
+                    newBody.getUnits().add(ifStmt);
+
+                    // create throw
                     newBody.getUnits().add(Jimple.v().newThrowStmt(val));
+                    
+                    newBody.getUnits().add(lastNop);
                 } else {
                     logger.warn("Throw not returning RefType: "+inst);
                 }
@@ -717,12 +799,21 @@ public class BodyBuilder {
 
                 Value str = visitValue(inst.operands.get(2).value);
                 if (cons != null && str != null) {
+                    // create if branch so that later code is not dead code
+                    Stmt lastNop = Jimple.v().newNopStmt();
+                    NeExpr cond = Jimple.v().newNeExpr(getCounter(), getCount());
+                    IfStmt ifStmt = Jimple.v().newIfStmt(cond, lastNop);
+                    newBody.getUnits().add(ifStmt);
+
+                    // build throw
                     RefType target_type = target.getType();
                     ret = Jimple.v().newLocal("$"+inst.name, target_type);
                     newBody.getLocals().add((Local)ret);
                     newBody.getUnits().add(Jimple.v().newAssignStmt(ret, Jimple.v().newNewExpr(target_type)));
                     buildSpecialCall(cons, (Local)ret, str); // omit?
                     newBody.getUnits().add(Jimple.v().newThrowStmt(ret));
+
+                    newBody.getUnits().add(lastNop);
                 } else {
                     logger.warn("ThrowNew failed for: "+inst);
                 }

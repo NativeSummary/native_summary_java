@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 
 import soot.AbstractJasminClass;
 import soot.ArrayType;
+import soot.BooleanType;
 import soot.DoubleType;
 import soot.FloatType;
 import soot.IntType;
@@ -184,6 +185,19 @@ public class TypeAnalysis {
                 Call call = (Call)inst;
                 if (call.target == null) {
                     continue;
+                }
+                String api = call.target;
+                if (api.equals("GetStringUTFChars") || api.equals("NewStringUTF")) {
+                    if (typeValue(call, RefType.v("java.lang.String"))) {
+                        // 加入所有User
+                        addUsersToWorklist(call, worklist);
+                    }
+                }
+                if (api.equals("IsInstanceOf")) {
+                    if (typeValue(call, BooleanType.v())) {
+                        // 加入所有User
+                        addUsersToWorklist(call, worklist);
+                    }
                 }
                 // jobject clazz/obj, jmethodID methodID, ...
                 // Nonvirtual: jobject obj, jclass clazz, jmethodID methodID, ... 
@@ -512,6 +526,7 @@ public class TypeAnalysis {
                 try{
                     m = cclz.getMethod(name.val, ts);
                 } catch (RuntimeException e) {
+                    logger.error("Can find class, but cannot find method for: {}.{}", cclz.getName(), name.val);
                     logger.error(e.getMessage());
                     continue;
                 }
@@ -649,17 +664,12 @@ public class TypeAnalysis {
             } else if (strv instanceof Phi) {
                 // 找到第一个strValue充数。TODO 支持Phi的解析
                 Phi phi = (Phi) strv;
-                Str ret = null;
-                for (Use u: phi.operands) {
-                    ret = ensureStr(u.value);
-                    if (ret != null) {
-                        break;
-                    }
+                Str searched = PreLoadAnalysis.searchPhiForStr((Phi)strv);
+                if (searched != null) {
+                    return searched;
                 }
-                return ret;
-            } else {
-                logger.error("String constant expected: {}", strv);
             }
+            logger.error("String constant expected: {}", strv);
             return null;
         }
         Str str = (Str) strv;

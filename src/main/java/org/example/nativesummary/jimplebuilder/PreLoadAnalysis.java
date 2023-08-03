@@ -1,5 +1,6 @@
 package org.example.nativesummary.jimplebuilder;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -10,6 +11,8 @@ import org.example.nativesummary.ir.Function;
 import org.example.nativesummary.ir.Instruction;
 import org.example.nativesummary.ir.Module;
 import org.example.nativesummary.ir.inst.Call;
+import org.example.nativesummary.ir.inst.Phi;
+import org.example.nativesummary.ir.utils.Use;
 import org.example.nativesummary.ir.utils.Value;
 import org.example.nativesummary.ir.value.Null;
 import org.example.nativesummary.ir.value.Str;
@@ -34,6 +37,13 @@ public class PreLoadAnalysis {
                 if (call.target == null) {continue;}
                 if (call.target.equals("FindClass")) {
                     Value strv = call.operands.get(1).value;
+                    // search Phi for a string constant.
+                    if (strv instanceof Phi) {
+                        Str searched = searchPhiForStr((Phi)strv);
+                        if (searched != null) {
+                            strv = searched;
+                        }
+                    }
                     if (!(strv instanceof Str)) {
                         if (strv instanceof Top || strv instanceof Null) {
                             logger.warn("FindClass not accurate: {}", call);
@@ -66,6 +76,20 @@ public class PreLoadAnalysis {
         for(String clz: clz_names) {
             Scene.v().addBasicClass(clz, SootClass.SIGNATURES);
         }
+    }
+
+    public static Str searchPhiForStr(Phi strv) {
+        for (Use u: ((Phi)strv).operands) {
+            if (u.value instanceof Str) {
+                return (Str) u.value;
+            }
+        }
+        for (Use u: ((Phi)strv).operands) {
+            if (u.value instanceof Phi) {
+                return searchPhiForStr((Phi)u.value);
+            }
+        }
+        return null;
     }
 
 }

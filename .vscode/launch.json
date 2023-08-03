@@ -60,7 +60,7 @@
             "mainClass": "org.example.nativesummary.APKRepacker",
             "cwd": "/home/user/ns/dev/NativeSummary/native_summary_java/",
             "vmArgs": "-ea",
-            "args": "/home/user/ns/dataset/fdroid-filter/me.tagavari.airmessage_139.apk /home/user/ns/experiment/baseline-native_summary/fdroid-results/me.tagavari.airmessage_139.apk /home/user/ns/dev/NativeSummary/platforms --no-null-in-phi --debug-type --debug-jimple"
+            "args": "/home/user/ns/dataset/fdroid-filter/com.buzbuz.smartautoclicker_20.apk /home/user/ns/experiment/baseline-native_summary/fdroid-results/com.buzbuz.smartautoclicker_20.apk /home/user/ns/dev/NativeSummary/platforms --no-null-in-phi --debug-type --debug-jimple"
         },
         {
             "type": "java",
@@ -69,7 +69,7 @@
             "mainClass": "org.example.nativesummary.APKRepacker",
             "cwd": "/home/user/ns/dev/NativeSummary/native_summary_java/",
             "vmArgs": "-ea",
-            "args": "/home/user/ns/dataset/malradar-filter/5c382b218b2bcc5adbc0c09d07e8bd5f4038e2912273f8e6b8bc3f19184315cd.apk /home1/user/ns/experiment/baseline-native_summary/malradar-results/5c382b218b2bcc5adbc0c09d07e8bd5f4038e2912273f8e6b8bc3f19184315cd.apk /home/user/ns/dev/NativeSummary/platforms --no-null-in-phi --debug-type --debug-jimple"
+            "args": "/home/user/ns/dataset/malradar-filter/ce66f32e6d609bef07aafdaeef4a22ed8aab27196187dcc53f88332dafe43e20.apk /home/user/ns/experiment/baseline-native_summary/malradar-results/ce66f32e6d609bef07aafdaeef4a22ed8aab27196187dcc53f88332dafe43e20.apk /home/user/ns/dev/NativeSummary/platforms --no-null-in-phi --debug-type --debug-jimple"
         }
     ]
 }

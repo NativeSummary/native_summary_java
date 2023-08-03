@@ -31,6 +31,7 @@ public class Context {
 
     public SigCollector doAnalysis(List<org.example.nativesummary.ir.Module> summaries, String apkPath, String platformDir) {
         ExternalFuncLoweringEarly.process(m, false);
+        ConstantPreferInt.process(m);
         new NumValueNamer().visitModule(m);
         if (isDebugLower) {
             Path path = Paths.get(summaryFolder, "00-lowered.summary.ll");
