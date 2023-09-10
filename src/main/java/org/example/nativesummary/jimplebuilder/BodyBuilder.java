@@ -322,7 +322,7 @@ public class BodyBuilder {
                 return boxed;
             }
         }
-        if (sootVal.getType() instanceof ArrayType) {
+        if (sootVal.getType() instanceof ArrayType || TypeAnalysis.isStringType(ty)) {
             Local val;
             if (sootVal instanceof Local) {
                 val = (Local) sootVal;

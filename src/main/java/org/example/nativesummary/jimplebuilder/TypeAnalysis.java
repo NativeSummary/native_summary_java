@@ -456,7 +456,7 @@ public class TypeAnalysis {
     }
 
     void handleMthFldId() {
-        for (Instruction inst: func.insts()) {
+        iterInst(inst -> {
             if (inst instanceof Phi) {
                 // TODO handle Phi for fields
                 for (Use use: inst.operands) {
@@ -469,11 +469,11 @@ public class TypeAnalysis {
                 }
             }
             if (!(inst instanceof Call)) {
-                continue;
+                return;
             }
             Call call = (Call)inst;
             if (call.target == null) {
-                continue;
+                return;
             }
             // signature暂时没有用到
             // jclass clazz, const char *name, const char *sig
@@ -482,21 +482,21 @@ public class TypeAnalysis {
                 SootClass cclz = getClassMap(clz);
                 if (cclz == null) {
                     logger.error("GetFieldID unable resolve to soot class: {}", clz);
-                    continue;
+                    return;
                 }
                 Value nameVal = call.operands.get(2).value;
                 Value sigVal = call.operands.get(3).value;
                 Str name = ensureStr(nameVal);
                 if (name == null) {
                     logger.error("GetFieldID cannot resolve name: {}", nameVal);
-                    continue;
+                    return;
                 }
                 SootField f;
                 try{
                     f = cclz.getFieldByName(name.val);
                 } catch (RuntimeException e) {
                     logger.error(e.getMessage());
-                    continue;
+                    return;
                 }
                 fieldMap.put(call, f);
                 call.preComments = f.toString();
@@ -507,7 +507,7 @@ public class TypeAnalysis {
                 SootClass cclz = getClassMap(clz);
                 if (cclz == null) {
                     logger.error("GetMethodID unable resolve to soot class: {}", clz);
-                    continue;
+                    return;
                 }
                 Value nameVal = call.operands.get(2).value;
                 Value sigVal = call.operands.get(3).value;
@@ -515,11 +515,11 @@ public class TypeAnalysis {
                 Str sig = ensureStr(sigVal);
                 if (name == null) {
                     logger.error("GetMethodID cannot resolve name: {}", nameVal);
-                    continue;
+                    return;
                 }
                 if (sig == null) {
                     logger.error("GetMethodID cannot resolve signature: {}", sigVal);
-                    continue;
+                    return;
                 }
                 List<Type> ts = BodyBuilder.argTypesFromSig(sig.val);
                 SootMethod m;
@@ -528,7 +528,7 @@ public class TypeAnalysis {
                 } catch (RuntimeException e) {
                     logger.error("Can find class, but cannot find method for: {}.{}", cclz.getName(), name.val);
                     logger.error(e.getMessage());
-                    continue;
+                    return;
                 }
                 methodMap.put(call, m);
                 call.preComments = m.toString();
@@ -538,11 +538,11 @@ public class TypeAnalysis {
                 SootClass cclz = getClassMap(clz);
                 if (cclz == null) {
                     logger.error("RegisterNatives unable resolve to soot class: {}", clz);
-                    continue;
+                    return;
                 }
                 dynRegMap.put(call, cclz);
             }
-        }
+        });
         // expand method id to phi inst
         expandPhi(methodMap);
         // expand field id to phi inst
@@ -739,6 +739,20 @@ public class TypeAnalysis {
         }
     }
 
+    public void iterInst(InstHandler handler) {
+        for (Instruction inst: func.insts()) {
+            try {
+                handler.handle(inst);
+            } catch (Exception e) {
+                logger.error("Exception during handling inst: "+inst.toString(), e);
+            }
+        }
+    }
+
+    private interface InstHandler {
+        void handle(Instruction inst);
+    }
+
     public void iterCall(CallHandler handler) {
         for (Instruction inst: func.insts()) {
             // if (inst instanceof Phi) {
@@ -757,7 +771,11 @@ public class TypeAnalysis {
             if (call.target == null) {
                 continue;
             }
-            handler.handle(call);
+            try {
+                handler.handle(call);
+            } catch (Exception e) {
+                logger.error("Exception during handling inst: "+inst.toString(), e);
+            }
         }
     }
 
