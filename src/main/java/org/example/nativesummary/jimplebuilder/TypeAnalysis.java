@@ -170,6 +170,9 @@ public class TypeAnalysis {
         // process all method call statement
         // call's parameter type flow to argument type.
         handleInst();
+        // getObjectClass
+        handleClassId();
+        handleMthFldId();
     }
 
     // 同时前向传播和反向传播必然确定的类型信息。使用一个Worklist算法。
@@ -229,6 +232,31 @@ public class TypeAnalysis {
                         if (typeValue(arg, m.getParameterType(i))) {
                             addUsersToWorklist(arg, worklist);
                             addToWorklist(arg, worklist);
+                        }
+                    }
+                    // optimize getsystemservice
+                    if (m.getName().equals("getSystemService")) {
+                        // Call CallObjectMethod null, %thiz, %4, %5
+                        Value op1 = inst.operands.get(3).value;
+                        if (op1 instanceof Call) {
+                            Call i1 = (Call) op1;
+                            // %5 = Call NewStringUTF null, char* "location"
+                            if (i1.target.equals("NewStringUTF")) {
+                                Str s1 = ensureStr(i1.operands.get(1).value);
+                                if (s1!=null) {
+                                    if (s1.val.equals("location")) {
+                                        // 
+                                        if (typeValue(call, RefType.v("android.location.LocationManager"))) {
+                                            // 加入所有User
+                                            addUsersToWorklist(call, worklist);
+                                        }
+                                        continue;
+                                    } else {
+                                        logger.warn("unable to set concrete class for getSystemService: "+s1.val);
+                                    }
+                                }
+                                
+                            }
                         }
                     }
                     // 返回值传播
@@ -314,9 +342,9 @@ public class TypeAnalysis {
             ret = RefType.v("java.lang.String");
         } else if (ty2 instanceof ArrayType) {
             ret = RefType.v("java.lang.String");
-        } else if (isStringType(ty1)) { // prefer string type.
+        } else if (isStringType(ty1) || isObjectType(ty1)) { // prefer string type.
             ret = ty1;
-        } else if (isStringType(ty2)) {
+        } else if (isStringType(ty2) || isObjectType(ty2)) {
             ret = ty2;
         } else if (ty1 instanceof NullType) { // null类型则用另外一个。
             ret = ty2;
@@ -335,6 +363,13 @@ public class TypeAnalysis {
     public static boolean isStringType(Type ty2) {
         if (ty2 instanceof RefType) {
             return ((RefType) ty2).getClassName().equals("java.lang.String");
+        }
+        return false;
+    }
+
+    public static boolean isObjectType(Type ty2) {
+        if (ty2 instanceof RefType) {
+            return ((RefType) ty2).getClassName().equals("java.lang.Object");
         }
         return false;
     }
