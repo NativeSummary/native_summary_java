@@ -59,6 +59,36 @@ public class TypeAnalysis {
         "FindClass", "GetObjectClass", "GetSuperclass", "NewGlobalRef"}; // TODO "DefineClass" "GetBooleanArrayElements"
     public static final Set<String> handledApiSet = new HashSet<>(Arrays.asList(handledApi));
 
+    // https://developer.android.com/reference/android/content/Context#getSystemService(java.lang.String)
+    public static final Map<String, String> systemServices = Map.ofEntries(
+            Map.entry("window", "android.view.WindowManager"),
+            Map.entry("layout_inflater", "android.view.LayoutInflater"),
+            Map.entry("activity", "android.app.ActivityManager"),
+            Map.entry("wallpaper", "android.service.wallpaper.WallpaperService"),
+            Map.entry("power", "android.os.PowerManager"),
+            Map.entry("alarm", "android.app.AlarmManager"),
+            Map.entry("notification", "android.app.NotificationManager"),
+            Map.entry("keyguard", "android.app.KeyguardManager"),
+            Map.entry("location", "android.location.LocationManager"),
+            Map.entry("search", "android.app.SearchManager"),
+            Map.entry("vibrator_manager", "android.os.VibratorManager"),
+            Map.entry("vibrator", "android.os.Vibrator"),
+            Map.entry("connectivity", "android.net.ConnectivityManager"),
+            Map.entry("ipsec", "android.net.IpSecManager"),
+            Map.entry("wifi", "android.net.wifi.WifiManager"),
+            Map.entry("wifiaware", "android.net.wifi.aware.WifiAwareManager"),
+            Map.entry("wifip2p", "android.net.wifi.p2p.WifiP2pManager"),
+            Map.entry("input_method", "android.view.inputmethod.InputMethodManager"),
+            Map.entry("uimode", "android.app.UiModeManager"),
+            Map.entry("download", "android.app.DownloadManager"),
+            Map.entry("batterymanager", "android.os.BatteryManager"),
+            Map.entry("taskmanager", "android.app.job.JobScheduler"),
+            Map.entry("netstats", "android.app.usage.NetworkStatsManager"),
+            Map.entry("hardware_properties", "android.os.HardwarePropertiesManager"),
+            Map.entry("domain_verification", "android.content.pm.verify.domain.DomainVerificationManager"),
+            Map.entry("display_hash", "android.view.displayhash.DisplayHashManager")
+    );
+
     public static void process(Module summary, AuxMethodManager mmgr) {
         instances = new HashMap<>();
         for (Function func: summary.funcs) {
@@ -163,20 +193,23 @@ public class TypeAnalysis {
         if (comment.length() != 0){
             func.comment = comment;
         }
-        // process all class id before method id.
-        handleClassId();
-        handleNewGlobalRef();
-        handleMthFldId();
-        // process all method call statement
-        // call's parameter type flow to argument type.
-        handleInst();
-        // getObjectClass
-        handleClassId();
-        handleMthFldId();
+        // use a loop to iterate
+        boolean cont = false;
+        do {
+            cont = false;
+            // process all class id before method id.
+            handleClassId();
+            handleNewGlobalRef();
+            handleMthFldId();
+            // process all method call statement
+            // call's parameter type flow to argument type.
+            cont |= handleInst();
+        } while(cont);
     }
 
     // 同时前向传播和反向传播必然确定的类型信息。使用一个Worklist算法。
-    void handleInst() {
+    boolean handleInst() {
+        boolean ret = false;
         // TODO better ordered set
         LinkedHashSet<Instruction> worklist = new LinkedHashSet<>();
         worklist.addAll(func.insts());
@@ -243,10 +276,10 @@ public class TypeAnalysis {
                             // %5 = Call NewStringUTF null, char* "location"
                             if (i1.target.equals("NewStringUTF")) {
                                 Str s1 = ensureStr(i1.operands.get(1).value);
-                                if (s1!=null) {
-                                    if (s1.val.equals("location")) {
-                                        // 
-                                        if (typeValue(call, RefType.v("android.location.LocationManager"))) {
+                                if (s1 != null) {
+                                    if (systemServices.containsKey(s1.val)) {
+                                        if (typeValue(call, RefType.v(systemServices.get(s1.val)))) {
+                                            ret = true;
                                             // 加入所有User
                                             addUsersToWorklist(call, worklist);
                                         }
@@ -304,6 +337,7 @@ public class TypeAnalysis {
                 }
             }
         }
+        return ret;
     }
 
     Type mergeTypes(Set<Type> types) {

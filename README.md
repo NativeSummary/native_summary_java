@@ -39,3 +39,5 @@ Some error caused by soot: (by manual checking)
 - `Unexpected inner class annotation element`
 - `Trying to cast reference type java.lang.Object to a primitive`
 - `Caused by: java.lang.IllegalStateException: UnitThrowAnalysis StmtSwitch: type of throw argument is not a RefType!`
+
+For `JADX WARN: Can't parse signature for local variable`, I guess this is due to the dex code generation of soot. It generates a empty string for local variable signature in the bytecode? e.g., `.local v0, "$3":I, ""`
