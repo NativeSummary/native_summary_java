@@ -73,7 +73,7 @@ public class SecondRepacker {
     // when overflowed, classdef that cannot fit first put in a set.
     // then, try to include them in the following dex file.
     // if there still remains classdef, fit them in new DexFiles.
-    Set<ClassDef> remainderDexes = new LinkedHashSet<>();
+    Set<ClassDef> remainderClasses = new LinkedHashSet<>();
     Map<String, DexPool> additionalDexes = new LinkedHashMap<>();
 
     private SecondRepacker(Map<String, Set<String>> mthSigs, Set<String> additionalClasses, Opcodes opcodes) {
@@ -119,7 +119,7 @@ public class SecondRepacker {
         }
 
         // 在最后一个dex里面，增加额外的class。
-        remainderDexes.addAll(additionalClassesMap.values());
+        remainderClasses.addAll(additionalClassesMap.values());
         rewriteFinish();
 
         // 把dex与原APK重写
@@ -140,7 +140,7 @@ public class SecondRepacker {
                     if (name.equals(lastName)) {
                         for (String name2: additionalDexes.keySet()) {
                             outputJar.putNextEntry(new ZipEntry(name2));
-                            try (InputStream is = convertDex(rewrittenDexes.get(name2))) {
+                            try (InputStream is = convertDex(additionalDexes.get(name2))) {
                                 StreamUtils.copy(is, outputJar);
                             }
                         }
@@ -160,7 +160,7 @@ public class SecondRepacker {
 
 
     void rewriteOne(String name, @Nonnull ByteArrayInputStream dexStream) throws IOException {
-        long overflowedCount = remainderDexes.size();
+        long overflowedCount = remainderClasses.size();
         DexFile dex = DexBackedDexFile.fromInputStream(opcodes, dexStream);
         dex = rewriter.getDexFileRewriter().rewrite(dex);
         // MemoryDataStore memds = new MemoryDataStore();
@@ -174,7 +174,7 @@ public class SecondRepacker {
         // intern class till overflow
         for (ClassDef classDef: dex.getClasses()) {
             if (overflowed) {
-                remainderDexes.add(classDef);
+                remainderClasses.add(classDef);
                 continue;
             }
             // not overflow
@@ -182,14 +182,14 @@ public class SecondRepacker {
             dexPool.internClass(classDef);
             if (dexPool.hasOverflowed()) {
                 dexPool.reset();
-                remainderDexes.add(classDef);
+                remainderClasses.add(classDef);
                 overflowed = true;
             }
         }
         // try to fit more class
         if (!overflowed) {
             ArrayList<ClassDef> added = new ArrayList<>();
-            for (ClassDef classDef: remainderDexes) {
+            for (ClassDef classDef: remainderClasses) {
                 dexPool.mark();
                 dexPool.internClass(classDef);
                 if (dexPool.hasOverflowed()) {
@@ -198,12 +198,12 @@ public class SecondRepacker {
                 }
                 added.add(classDef);
             }
-            remainderDexes.removeAll(added);
+            remainderClasses.removeAll(added);
         }
         rewrittenDexes.put(name, dexPool);
 
         // log 
-        overflowedCount = remainderDexes.size() - overflowedCount;
+        overflowedCount = remainderClasses.size() - overflowedCount;
         if (overflowedCount > 0) {
             logger.info("Dex file {} overflowed {} classes.", name, overflowedCount);
         }
@@ -216,7 +216,7 @@ public class SecondRepacker {
             name = nextDexFileName(name);
             dexPool = newDexPool(name);
         }
-        for (ClassDef classDef: remainderDexes) {
+        for (ClassDef classDef: remainderClasses) {
             dexPool.mark();
             dexPool.internClass(classDef);
             if (dexPool.hasOverflowed()) {

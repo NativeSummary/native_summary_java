@@ -305,7 +305,7 @@ public class APKRepacker {
         DexFileFactory.writeDexFile(tmpClassesDex.getCanonicalPath(), rewrittenDexFile);
 
         File outApkFile = File.createTempFile("finalAPK", null);
-        JarFile inputJar = new JarFile(apkFileLocation);
+        JarFile inputJar = new JarFile(apkFileLocation, false);
         try (ZipOutputStream outputJar = new ZipOutputStream(new FileOutputStream(outApkFile))) {
             Enumeration<JarEntry> entries = inputJar.entries();
             while (entries.hasMoreElements()) {
@@ -528,8 +528,6 @@ public class APKRepacker {
                     logger.info("[#] skip " + apkFile.getName());
                     continue;
                 }
-
-
                 logger.info("[#] ###### " + apkFile.getName());
                 // 去除.apk后缀，加上summary文件夹的后缀
                 String summaryFolder = apkFile.getName().substring(0, Math.toIntExact(apkFile.getName().length() - 4))
